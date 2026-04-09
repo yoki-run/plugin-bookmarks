@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/yoki-run/yoki/main/plugin.schema.json",
+  "name": "Bookmarks",
+  "keyword": "bm",
+  "icon": "bookmark",
+  "description": "Search Chrome, Edge, Brave, Vivaldi bookmarks instantly",
+  "version": "1.0.0",
+  "author": "Yoki",
+  "homepage": "https://github.com/yoki-run/plugin-bookmarks",
+  "license": "MIT",
+  "categories": ["productivity", "tools"],
+  "yoki_min": "1.0.7.10",
+
+  "protocol": "v2",
+
+  "permissions": {
+    "filesystem": ["read:bookmarks"]
+  },
+
+  "commands": [
+    {
+      "name": "search",
+      "title": "Search Bookmarks",
+      "description": "Search across all browser bookmarks",
+      "mode": "list",
+      "exec": "search.rb",
+      "takes_query": true
+    }
+  ]
+}
