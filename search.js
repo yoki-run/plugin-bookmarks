@@ -1,175 +1,124 @@
 #!/usr/bin/env node
+/**
+ * search.js — Search bookmarks in default browser.
+ *
+ * Usage: bm <query>
+ */
 "use strict";
 
 const fs = require("fs");
 const path = require("path");
 const { readInput, writeResponse, list, error, stripKeyword } = require("@yoki/plugin-sdk");
+const { getDefaultBrowser, getChromiumProfiles, getFirefoxProfiles } = require("./browser");
 
-// --- Browser bookmark paths (Windows) ---
+// --- Bookmark parsing ---
 
-const LOCALAPPDATA = process.env.LOCALAPPDATA || "";
-
-const BROWSERS = {
-  Chrome:  path.join(LOCALAPPDATA, "Google", "Chrome", "User Data"),
-  Edge:    path.join(LOCALAPPDATA, "Microsoft", "Edge", "User Data"),
-  Brave:   path.join(LOCALAPPDATA, "BraveSoftware", "Brave-Browser", "User Data"),
-  Vivaldi: path.join(LOCALAPPDATA, "Vivaldi", "Application", "User Data"),
-};
-
-const ICONS = {
-  Chrome:  "\u{1F310}",
-  Edge:    "\u{1F535}",
-  Brave:   "\u{1F981}",
-  Vivaldi: "\u{1F534}",
-};
-
-// --- Bookmark parser ---
-
-function findProfiles(userDataDir) {
-  if (!fs.existsSync(userDataDir) || !fs.statSync(userDataDir).isDirectory()) {
-    return [];
-  }
-
-  const profiles = [];
-
-  // Default profile
-  const defaultBm = path.join(userDataDir, "Default", "Bookmarks");
-  if (fs.existsSync(defaultBm)) {
-    profiles.push(defaultBm);
-  }
-
-  // Additional profiles (Profile 1, Profile 2, etc.)
+function findChromiumBookmarks(profilePath) {
+  const bmFile = path.join(profilePath, "Bookmarks");
+  if (!fs.existsSync(bmFile)) return [];
   try {
-    const entries = fs.readdirSync(userDataDir);
-    for (const entry of entries) {
-      if (/^Profile /.test(entry)) {
-        const bmPath = path.join(userDataDir, entry, "Bookmarks");
-        if (fs.existsSync(bmPath)) {
-          profiles.push(bmPath);
-        }
+    const data = JSON.parse(fs.readFileSync(bmFile, "utf-8"));
+    const results = [];
+    const walk = (node, folder) => {
+      if (!node) return;
+      if (node.type === "url") {
+        results.push({ name: node.name || "", url: node.url || "", folder: folder.join(" / ") });
+      } else if (node.type === "folder" && node.children) {
+        const path = [...folder, node.name || ""];
+        node.children.forEach(c => walk(c, path));
       }
-    }
-  } catch (_) {
-    // ignore read errors
-  }
-
-  return profiles;
+    };
+    if (data.roots) Object.values(data.roots).forEach(r => walk(r, []));
+    return results;
+  } catch { return []; }
 }
 
-function parseBookmarks(filePath) {
+function findFirefoxBookmarks(profilePath) {
+  // Firefox bookmarks are in places.sqlite — need better-sqlite3
+  const Database = require("better-sqlite3");
+  const placesFile = path.join(profilePath, "places.sqlite");
+  if (!fs.existsSync(placesFile)) return [];
+
+  const os = require("os");
+  const tmp = path.join(os.tmpdir(), `yoki_ff_bm_${Date.now()}.db`);
   try {
-    const raw = fs.readFileSync(filePath, "utf-8");
-    const data = JSON.parse(raw);
-    const bookmarks = [];
-    const roots = data.roots || {};
-    for (const key of Object.keys(roots)) {
-      walk(roots[key], [], bookmarks);
-    }
-    return bookmarks;
-  } catch (_) {
-    return [];
-  }
-}
-
-function walk(node, folderPath, results) {
-  if (!node || typeof node !== "object") return;
-
-  if (node.type === "url") {
-    results.push({
-      name: node.name || "",
-      url: node.url || "",
-      folder: folderPath.join(" / "),
-    });
-  } else if (node.type === "folder" && Array.isArray(node.children)) {
-    const newPath = folderPath.concat(node.name || "");
-    for (const child of node.children) {
-      walk(child, newPath, results);
-    }
-  }
-}
-
-// --- Search logic ---
-
-function loadAllBookmarks() {
-  const all = [];
-  for (const [browser, userDataDir] of Object.entries(BROWSERS)) {
-    const profiles = findProfiles(userDataDir);
-    for (const bmPath of profiles) {
-      const bookmarks = parseBookmarks(bmPath);
-      for (const bm of bookmarks) {
-        bm.browser = browser;
-        all.push(bm);
-      }
-    }
-  }
-  return all;
-}
-
-function search(bookmarks, query) {
-  if (!query) return bookmarks;
-
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  return bookmarks.filter((bm) => {
-    const haystack = `${bm.name} ${bm.url} ${bm.folder}`.toLowerCase();
-    return words.every((w) => haystack.includes(w));
-  });
-}
-
-function faviconUrl(url) {
-  try {
-    const host = new URL(url).hostname;
-    if (!host) return null;
-    return `https://www.google.com/s2/favicons?domain=${host}&sz=32`;
-  } catch (_) {
-    return null;
-  }
+    fs.copyFileSync(placesFile, tmp);
+    const db = new Database(tmp, { readonly: true, fileMustExist: true });
+    const rows = db.prepare(`
+      SELECT b.title, p.url, pa.title as folder
+      FROM moz_bookmarks b
+      JOIN moz_places p ON b.fk = p.id
+      LEFT JOIN moz_bookmarks pa ON b.parent = pa.id
+      WHERE b.type = 1 AND p.url NOT LIKE 'place:%'
+    `).all();
+    db.close();
+    return rows.map(r => ({ name: r.title || "", url: r.url || "", folder: r.folder || "" }));
+  } catch { return []; }
+  finally { try { fs.unlinkSync(tmp); } catch {} }
 }
 
 // --- Main ---
 
-readInput().then((input) => {
+async function main() {
+  const input = await readInput();
   const query = stripKeyword(input.query || "", "search", "s");
 
-  const bookmarks = loadAllBookmarks();
-  let results = search(bookmarks, query);
-
-  // Limit to 50 results for performance
-  results = results.slice(0, 50);
-
-  if (results.length === 0 && query) {
-    writeResponse(error("No bookmarks found", "Try a different search term"));
+  const browser = getDefaultBrowser();
+  if (!browser) {
+    writeResponse(error("Could not detect default browser"));
     return;
   }
 
-  if (results.length === 0) {
-    writeResponse(error("No bookmarks found", "No Chromium browsers with bookmarks detected"));
+  let bookmarks = [];
+
+  if (browser.profilesDir) {
+    // Firefox
+    const profiles = getFirefoxProfiles(browser.profilesDir);
+    for (const p of profiles) bookmarks.push(...findFirefoxBookmarks(p));
+  } else if (browser.userDataDir) {
+    // Chromium
+    const profiles = getChromiumProfiles(browser.userDataDir);
+    for (const p of profiles) bookmarks.push(...findChromiumBookmarks(p));
+  }
+
+  // Filter
+  const words = (query || "").toLowerCase().split(/\s+/).filter(Boolean);
+  let filtered = bookmarks;
+  if (words.length > 0) {
+    filtered = bookmarks.filter(bm => {
+      const hay = `${bm.name} ${bm.url} ${bm.folder}`.toLowerCase();
+      return words.every(w => hay.includes(w));
+    });
+  }
+
+  filtered = filtered.slice(0, 50);
+
+  if (filtered.length === 0 && query) {
+    writeResponse(error("No bookmarks found", `No results for "${query}" in ${browser.name}`));
+    return;
+  }
+  if (filtered.length === 0) {
+    writeResponse(error("No bookmarks", `No bookmarks found in ${browser.name}`));
     return;
   }
 
-  const items = results.map((bm, i) => {
-    let subtitle = bm.url.length > 80 ? bm.url.slice(0, 78) + "..." : bm.url;
-    if (bm.folder) subtitle += `  \u00b7  ${bm.folder}`;
-    subtitle += `  \u00b7  ${bm.browser}`;
-
-    const item = {
+  const items = filtered.map((bm, i) => {
+    let subtitle = bm.url.length > 70 ? bm.url.slice(0, 67) + "..." : bm.url;
+    if (bm.folder) subtitle += `  ·  ${bm.folder}`;
+    subtitle += `  ·  ${browser.name}`;
+    return {
       id: `bm-${i}`,
       title: bm.name || bm.url,
       subtitle,
+      icon: "🔖",
       actions: [
         { title: "Open", shortcut: "enter", type: "open_url", url: bm.url },
         { title: "Copy URL", shortcut: "cmd+c", type: "copy", value: bm.url },
       ],
     };
-
-    const fav = faviconUrl(bm.url);
-    if (fav) {
-      item.icon_url = fav;
-    } else {
-      item.icon = ICONS[bm.browser] || "\u{1F516}";
-    }
-
-    return item;
   });
 
   writeResponse(list(items));
-});
+}
+
+main();
