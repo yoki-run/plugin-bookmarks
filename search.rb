@@ -6,6 +6,7 @@
 
 require "yoki_plugin_sdk"
 require "json"
+require "uri"
 
 # --- Browser bookmark paths (Windows) ---
 
@@ -119,22 +120,35 @@ if results.empty?
   exit
 end
 
+def favicon_url(url)
+  host = URI.parse(url).host rescue nil
+  return nil unless host
+  "https://www.google.com/s2/favicons?domain=#{host}&sz=32"
+end
+
 items = results.map.with_index do |bm, i|
-  icon = ICONS[bm[:browser]] || "🔖"
   subtitle = bm[:url].length > 80 ? bm[:url][0..77] + "..." : bm[:url]
   subtitle += "  ·  #{bm[:folder]}" unless bm[:folder].empty?
   subtitle += "  ·  #{bm[:browser]}"
 
-  {
+  item = {
     id: "bm-#{i}",
     title: bm[:name].empty? ? bm[:url] : bm[:name],
     subtitle: subtitle,
-    icon: icon,
     actions: [
       { title: "Open", shortcut: "enter", type: "open_url", url: bm[:url] },
       { title: "Copy URL", shortcut: "cmd+c", type: "copy", value: bm[:url] },
     ],
   }
+
+  fav = favicon_url(bm[:url])
+  if fav
+    item[:icon_url] = fav
+  else
+    item[:icon] = ICONS[bm[:browser]] || "🔖"
+  end
+
+  item
 end
 
 Yoki.write_response(Yoki.list(items))
