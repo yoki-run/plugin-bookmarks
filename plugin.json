@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/yoki-run/yoki/main/plugin.schema.json",
   "name": "Bookmarks",
   "keyword": "bm",
-  "icon": "bookmark",
+  "icon": "<svg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'><rect width='24' height='24' rx='6' fill='#FF6D00'/><path d='M8 5h8a1 1 0 011 1v13l-5-3-5 3V6a1 1 0 011-1z' fill='white'/></svg>",
   "description": "Search Chrome, Edge, Brave, Vivaldi bookmarks instantly",
   "version": "1.1.0",
   "author": "Yoki",
