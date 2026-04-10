@@ -119,9 +119,21 @@ function queryFirefoxHistory(profilePath, query, limit) {
   }
 }
 
+const PER_PAGE = 25;
+const MAX_FETCH = 500; // fetch up to 500 from DB, paginate in JS
+
 async function main() {
   const input = await readInput();
-  const query = stripKeyword(input.query || "", "history", "hist", "h");
+  let raw = stripKeyword(input.query || "", "history", "hist", "h");
+
+  // Parse page number from end: "github :3" → query="github", page=3
+  let page = 1;
+  const pageMatch = raw.match(/:(\d+)\s*$/);
+  if (pageMatch) {
+    page = Math.max(1, parseInt(pageMatch[1]));
+    raw = raw.replace(/:(\d+)\s*$/, "").trim();
+  }
+  const query = raw;
 
   const browser = getDefaultBrowser();
   if (!browser) {
@@ -130,23 +142,16 @@ async function main() {
   }
 
   let results = [];
-  const limit = 50;
 
   if (browser.profilesDir) {
-    // Firefox
     const profiles = getFirefoxProfiles(browser.profilesDir);
-    for (const p of profiles) {
-      results.push(...queryFirefoxHistory(p, query, limit));
-    }
+    for (const p of profiles) results.push(...queryFirefoxHistory(p, query, MAX_FETCH));
   } else if (browser.userDataDir) {
-    // Chromium
     const profiles = getChromiumProfiles(browser.userDataDir);
-    for (const p of profiles) {
-      results.push(...queryChromiumHistory(p, query, limit));
-    }
+    for (const p of profiles) results.push(...queryChromiumHistory(p, query, MAX_FETCH));
   }
 
-  // Sort by date descending, deduplicate by URL, limit to 50
+  // Dedup + sort
   const seen = new Set();
   results = results
     .sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0))
@@ -154,24 +159,32 @@ async function main() {
       if (seen.has(r.url)) return false;
       seen.add(r.url);
       return true;
-    })
-    .slice(0, limit);
+    });
 
-  if (results.length === 0 && query) {
+  const total = results.length;
+  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+  page = Math.min(page, totalPages);
+
+  const start = (page - 1) * PER_PAGE;
+  const pageResults = results.slice(start, start + PER_PAGE);
+
+  if (total === 0 && query) {
     writeResponse(error("No history found", `No results for "${query}" in ${browser.name}`));
     return;
   }
-
-  if (results.length === 0) {
+  if (total === 0) {
     writeResponse(error("No history", `Could not read history from ${browser.name}`));
     return;
   }
 
-  const items = results.map((r, i) => {
+  // Build keyword for yoki_run navigation
+  const baseCmd = query ? `bm h ${query}` : "bm h";
+
+  const items = pageResults.map((r, i) => {
     const when = timeAgo(r.date);
-    const subtitle = `${r.url.length > 70 ? r.url.slice(0, 67) + "..." : r.url}${when ? "  ·  " + when : ""}`;
+    const subtitle = `${r.url.length > 60 ? r.url.slice(0, 57) + "..." : r.url}${when ? "  ·  " + when : ""}`;
     return {
-      id: `h-${i}`,
+      id: `h-${start + i}`,
       title: r.title,
       subtitle,
       icon: "🕐",
@@ -181,6 +194,30 @@ async function main() {
       ],
     };
   });
+
+  // Pagination nav item at the bottom
+  if (totalPages > 1) {
+    const navParts = [];
+    if (page > 1) navParts.push(`← Page ${page - 1}`);
+    navParts.push(`Page ${page} of ${totalPages}`);
+    if (page < totalPages) navParts.push(`Page ${page + 1} →`);
+
+    const actions = [];
+    if (page > 1) {
+      actions.push({ title: `← Prev`, type: "yoki_run", value: `${baseCmd} :${page - 1}` });
+    }
+    if (page < totalPages) {
+      actions.push({ title: `Next →`, type: "yoki_run", value: `${baseCmd} :${page + 1}` });
+    }
+
+    items.push({
+      id: "nav",
+      title: navParts.join("  ·  "),
+      subtitle: `${total} results in ${browser.name}  ·  ${PER_PAGE} per page`,
+      icon: "📄",
+      actions,
+    });
+  }
 
   writeResponse(list(items));
 }
