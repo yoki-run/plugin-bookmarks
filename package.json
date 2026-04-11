@@ -1,0 +1,24 @@
+{
+  "name": "yoki-plugin-bookmarks",
+  "version": "1.0.0",
+  "description": "Search Chrome, Edge, Brave, and Vivaldi bookmarks instantly from [Yoki](https://yoki.run).",
+  "main": "search.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yoki-run/plugin-bookmarks.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/yoki-run/plugin-bookmarks/issues"
+  },
+  "homepage": "https://github.com/yoki-run/plugin-bookmarks#readme",
+  "dependencies": {
+    "better-sqlite3": "^12.8.0"
+  }
+}

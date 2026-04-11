@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gem which:*)",
+      "Bash(gem contents:*)",
+      "Bash(gem list:*)",
+      "Bash(ruby:*)",
+      "Bash(grep -E \"\\\\.\\(md|json|ts|go\\)$\")",
+      "Bash(xargs grep:*)",
+      "Bash(find . -name \"*.go\" -type f -exec grep -l \"func \\(a \\\\*App\\)\" {} \\\\;)",
+      "Bash(go build:*)",
+      "Bash(gh pr create --title 'fix: use BrowserOpenURL for plugin open_url actions — v1.0.7.10' --body ':*)",
+      "Bash(gh pr:*)",
+      "Bash(wails build:*)",
+      "Bash(bash scripts/release.sh)",
+      "Bash(gh release:*)",
+      "Bash(cd /tmp)",
+      "Bash(sqlite3 \"C:\\\\Users\\\\ismail\\\\AppData\\\\Local\\\\Google\\\\Chrome\\\\User Data\\\\Default\\\\Favicons\" \".schema\")",
+      "WebSearch",
+      "Bash(grep -E \"\\\\.ts$|\\\\.tsx$\")",
+      "mcp__plugin_supabase_supabase__execute_sql",
+      "mcp__plugin_supabase_supabase__list_projects"
+    ]
+  }
+}
