@@ -18,6 +18,9 @@
     "url": "https://github.com/yoki-run/plugin-bookmarks/issues"
   },
   "homepage": "https://github.com/yoki-run/plugin-bookmarks#readme",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "better-sqlite3": "^12.8.0"
   }
